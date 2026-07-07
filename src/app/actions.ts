@@ -21,12 +21,12 @@ async function notifyAllMembers(subject: string, body: string) {
     for (const email of emails) {
       try {
         await resend.emails.send({
-          from: 'Quest Manager <onboarding@resend.dev>',
+          from: 'Side Quests <onboarding@resend.dev>',
           to: email,
           subject,
           html: `
             <div style="font-family: 'Courier New', monospace; background: #1a1a2e; color: #e8d5b7; padding: 24px; border: 4px solid #5c4a2a; max-width: 500px;">
-              <h1 style="color: #ffd700; font-size: 16px; margin-bottom: 16px;">⛏️ QUEST MANAGER</h1>
+              <h1 style="color: #ffd700; font-size: 16px; margin-bottom: 16px;">⛏️ SIDE QUESTS</h1>
               <hr style="border-color: #5c4a2a;" />
               ${body}
               <hr style="border-color: #5c4a2a; margin-top: 16px;" />

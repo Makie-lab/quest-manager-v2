@@ -49,12 +49,12 @@ export async function GET(request: Request) {
 
       try {
         await resend.emails.send({
-          from: 'Quest Manager <quests@notifications.questmanager.app>',
+          from: 'Side Quests <quests@notifications.questmanager.app>',
           to: user.email,
           subject: `⚔️ Quest deadline approaching: ${quest.name}`,
           html: `
             <div style="font-family: monospace; background: #1a1a2e; color: #e8d5b7; padding: 24px; border: 4px solid #5c4a2a;">
-              <h1 style="color: #ffd700; font-size: 16px;">⛏️ QUEST MANAGER</h1>
+              <h1 style="color: #ffd700; font-size: 16px;">⛏️ SIDE QUESTS</h1>
               <hr style="border-color: #5c4a2a;" />
               <h2 style="color: #e63946;">⏰ Deadline Approaching!</h2>
               <p><strong>Quest:</strong> ${quest.name}</p>

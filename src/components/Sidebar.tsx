@@ -26,7 +26,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-header">
         <span className="sidebar-logo">⛏️</span>
-        <span className="sidebar-title">QUEST MGR</span>
+        <span className="sidebar-title">SIDE QUESTS</span>
       </div>
 
       <nav className="sidebar-nav">
