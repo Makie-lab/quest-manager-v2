@@ -2,7 +2,7 @@
 
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { quests, activityLog, users, calendarEvents, posts } from '@/db/schema';
+import { quests, activityLog, users, calendarEvents, posts, teams, teamMembers } from '@/db/schema';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { Resend } from 'resend';
@@ -323,4 +323,226 @@ export async function likePost(postId: string) {
   }).where(eq(posts.id, postId));
 
   revalidatePath('/posts');
+}
+
+// ====== TEAMS ======
+
+export async function createTeam(formData: FormData) {
+  const user = await ensureUser();
+  const name = formData.get('name') as string;
+  const description = formData.get('description') as string || '';
+
+  if (!name || name.trim().length === 0) throw new Error('Team name required');
+
+  const [team] = await db.insert(teams).values({
+    name: name.trim(),
+    description,
+    ownerId: user.id,
+  }).returning();
+
+  // Add owner as team member
+  await db.insert(teamMembers).values({
+    teamId: team.id,
+    userId: user.id,
+    role: 'owner',
+  });
+
+  await db.insert(activityLog).values({
+    userId: user.id,
+    teamId: team.id,
+    action: 'team_created',
+    details: JSON.stringify({ name: team.name }),
+  });
+
+  revalidatePath('/team/settings');
+  revalidatePath('/members');
+  return team;
+}
+
+export async function getMyTeam() {
+  const { userId } = auth();
+  if (!userId) return null;
+
+  // Find team where user is owner or member
+  const membership = await db.select({
+    team: teams,
+    role: teamMembers.role,
+  })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+    .where(eq(teamMembers.userId, userId))
+    .limit(1);
+
+  if (membership.length === 0) return null;
+  return { ...membership[0].team, myRole: membership[0].role };
+}
+
+export async function getTeamMembers() {
+  const { userId } = auth();
+  if (!userId) return [];
+
+  // Find user's team
+  const membership = await db.select()
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, userId))
+    .limit(1);
+
+  if (membership.length === 0) return [];
+
+  const members = await db.select({
+    member: teamMembers,
+    user: users,
+  })
+    .from(teamMembers)
+    .innerJoin(users, eq(teamMembers.userId, users.id))
+    .where(eq(teamMembers.teamId, membership[0].teamId));
+
+  return members;
+}
+
+export async function kickMember(memberUserId: string) {
+  const { userId } = auth();
+  if (!userId) throw new Error('Not authenticated');
+
+  // Verify caller is owner
+  const callerMembership = await db.select()
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, userId))
+    .limit(1);
+
+  if (callerMembership.length === 0) throw new Error('You are not in a team');
+
+  const team = await db.select().from(teams)
+    .where(eq(teams.id, callerMembership[0].teamId))
+    .limit(1);
+
+  if (team.length === 0 || team[0].ownerId !== userId) {
+    throw new Error('Only the team owner can kick members');
+  }
+
+  // Can't kick yourself
+  if (memberUserId === userId) throw new Error('Cannot kick yourself');
+
+  // Remove from team
+  await db.delete(teamMembers).where(
+    and(
+      eq(teamMembers.teamId, team[0].id),
+      eq(teamMembers.userId, memberUserId)
+    )
+  );
+
+  await db.insert(activityLog).values({
+    userId,
+    teamId: team[0].id,
+    action: 'member_kicked',
+    details: JSON.stringify({ kickedUserId: memberUserId }),
+  });
+
+  revalidatePath('/members');
+  revalidatePath('/team/settings');
+}
+
+export async function inviteMember(email: string) {
+  const { userId } = auth();
+  if (!userId) throw new Error('Not authenticated');
+
+  // Find caller's team
+  const callerMembership = await db.select()
+    .from(teamMembers)
+    .where(eq(teamMembers.userId, userId))
+    .limit(1);
+
+  if (callerMembership.length === 0) throw new Error('You are not in a team');
+
+  const team = await db.select().from(teams)
+    .where(eq(teams.id, callerMembership[0].teamId))
+    .limit(1);
+
+  if (team.length === 0 || team[0].ownerId !== userId) {
+    throw new Error('Only the team owner can invite members');
+  }
+
+  // Find user by email
+  const invitee = await db.select().from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  if (invitee.length === 0) throw new Error('User not found. They need to sign up first.');
+
+  // Check if already a member
+  const existing = await db.select().from(teamMembers)
+    .where(and(
+      eq(teamMembers.teamId, team[0].id),
+      eq(teamMembers.userId, invitee[0].id)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) throw new Error('User is already a team member');
+
+  // Add to team
+  await db.insert(teamMembers).values({
+    teamId: team[0].id,
+    userId: invitee[0].id,
+    role: 'member',
+  });
+
+  await db.insert(activityLog).values({
+    userId,
+    teamId: team[0].id,
+    action: 'member_invited',
+    details: JSON.stringify({ invitedEmail: email }),
+  });
+
+  revalidatePath('/members');
+  revalidatePath('/team/settings');
+}
+
+export async function deleteTeam() {
+  const { userId } = auth();
+  if (!userId) throw new Error('Not authenticated');
+
+  const team = await db.select().from(teams)
+    .where(eq(teams.ownerId, userId))
+    .limit(1);
+
+  if (team.length === 0) throw new Error('You do not own a team');
+
+  await db.delete(teams).where(eq(teams.id, team[0].id));
+
+  revalidatePath('/team/settings');
+  revalidatePath('/members');
+}
+
+// ====== CHARACTER CUSTOMIZATION ======
+
+export async function getCharacterConfig() {
+  const { userId } = auth();
+  if (!userId) return null;
+
+  const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (user.length === 0) return null;
+
+  try {
+    return JSON.parse(user[0].characterConfig || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export async function updateCharacterConfig(config: {
+  hairColor?: string;
+  skinColor?: string;
+  shirtColor?: string;
+  pantsColor?: string;
+  bootsColor?: string;
+}) {
+  const { userId } = auth();
+  if (!userId) throw new Error('Not authenticated');
+
+  await db.update(users).set({
+    characterConfig: JSON.stringify(config),
+    updatedAt: new Date(),
+  }).where(eq(users.id, userId));
+
+  revalidatePath('/');
 }

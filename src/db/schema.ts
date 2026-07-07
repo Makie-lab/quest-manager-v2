@@ -7,6 +7,7 @@ export const users = pgTable('users', {
   name: varchar('name', { length: 255 }).notNull(),
   imageUrl: text('image_url'),
   notificationsEnabled: boolean('notifications_enabled').default(true),
+  characterConfig: text('character_config').default('{}'), // JSON: {hairColor, skinColor, shirtColor, pantsColor, bootsColor}
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

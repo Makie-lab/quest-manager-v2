@@ -11,6 +11,7 @@ interface QuestData {
 interface Props {
   quests: QuestData[];
   userName: string;
+  characterConfig?: Record<string, string>;
 }
 
 // Pixel art character drawing engine
@@ -80,7 +81,7 @@ const NPC_GREETINGS = [
   "You look stronger today!",
 ];
 
-export default function GameCanvas({ quests, userName }: Props) {
+export default function GameCanvas({ quests, userName, characterConfig = {} }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
   const charRef = useRef({ x: 0, y: 0, jumpProgress: 0, jumpTriggered: false });
@@ -226,7 +227,7 @@ export default function GameCanvas({ quests, userName }: Props) {
       }
 
       // Draw player character
-      drawCharacter(ctx, char.x, char.y, frame, state, equipment, questLoad);
+      drawCharacter(ctx, char.x, char.y, frame, state, equipment, questLoad, characterConfig);
 
       // Name tag
       ctx.font = '8px "Press Start 2P"';
@@ -257,7 +258,7 @@ export default function GameCanvas({ quests, userName }: Props) {
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', resize);
     };
-  }, [quests, userName]);
+  }, [quests, userName, characterConfig]);
 
   return (
     <section className="game-scene">
@@ -442,9 +443,19 @@ function drawNPC(ctx: CanvasRenderingContext2D, x: number, y: number, frame: num
 function drawCharacter(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, frame: number,
-  state: string, equipment: string[], questLoad: number
+  state: string, equipment: string[], questLoad: number,
+  customColors: Record<string, string> = {}
 ) {
   const p = PIXEL;
+  const colors = {
+    skin: customColors.skinColor || COLORS.skin,
+    hair: customColors.hairColor || COLORS.hair,
+    shirt: customColors.shirtColor || COLORS.shirt,
+    pants: customColors.pantsColor || COLORS.pants,
+    boots: customColors.bootsColor || COLORS.boots,
+    eye: COLORS.eye,
+    white: COLORS.white,
+  };
   const drawRect = (col: number, row: number, w: number, h: number, color: string) => {
     ctx.fillStyle = color;
     ctx.fillRect(x + col * p, y + row * p, w * p, h * p);
@@ -459,13 +470,13 @@ function drawCharacter(
   }
 
   if (state === 'sleeping') {
-    drawRect(0, 18, 16, 3, COLORS.shirt);
-    drawRect(0, 15, 6, 5, COLORS.skin);
-    drawRect(0, 14, 6, 2, COLORS.hair);
-    ctx.fillStyle = COLORS.eye;
+    drawRect(0, 18, 16, 3, colors.shirt);
+    drawRect(0, 15, 6, 5, colors.skin);
+    drawRect(0, 14, 6, 2, colors.hair);
+    ctx.fillStyle = colors.eye;
     ctx.fillRect(x + 2 * p, y + 17 * p, p, p);
-    drawRect(10, 18, 6, 3, COLORS.pants);
-    drawRect(14, 18, 2, 3, COLORS.boots);
+    drawRect(10, 18, 6, 3, colors.pants);
+    drawRect(14, 18, 2, 3, colors.boots);
     const zzz = Math.floor(frame / 20) % 3;
     ctx.fillStyle = 'rgba(150,150,255,0.7)';
     ctx.font = `${8 + zzz * 2}px "Press Start 2P"`;
@@ -478,19 +489,19 @@ function drawCharacter(
   const by = bodyBob;
 
   // Hair
-  drawRect(4, 0 + by, 8, 3, COLORS.hair);
-  drawRect(3, 1 + by, 10, 2, COLORS.hair);
+  drawRect(4, 0 + by, 8, 3, colors.hair);
+  drawRect(3, 1 + by, 10, 2, colors.hair);
   // Head
-  drawRect(4, 3 + by, 8, 7, COLORS.skin);
+  drawRect(4, 3 + by, 8, 7, colors.skin);
   // Eyes
-  ctx.fillStyle = COLORS.white;
+  ctx.fillStyle = colors.white;
   ctx.fillRect(x + 5 * p, y + (5 + by) * p, p, p);
   ctx.fillRect(x + 9 * p, y + (5 + by) * p, p, p);
-  ctx.fillStyle = COLORS.eye;
+  ctx.fillStyle = colors.eye;
   ctx.fillRect(x + 6 * p, y + (5 + by) * p, p, p);
   ctx.fillRect(x + 10 * p, y + (5 + by) * p, p, p);
   // Body
-  drawRect(3, 10 + by, 10, 7, COLORS.shirt);
+  drawRect(3, 10 + by, 10, 7, colors.shirt);
 
   // Armor
   if (equipment.includes('armor')) {
@@ -499,10 +510,10 @@ function drawCharacter(
   }
 
   // Arms
-  drawRect(1, 10 + by + armOffset, 2, 6, COLORS.shirt);
-  drawRect(1, 15 + by + armOffset, 2, 2, COLORS.skin);
-  drawRect(13, 10 + by - armOffset, 2, 6, COLORS.shirt);
-  drawRect(13, 15 + by - armOffset, 2, 2, COLORS.skin);
+  drawRect(1, 10 + by + armOffset, 2, 6, colors.shirt);
+  drawRect(1, 15 + by + armOffset, 2, 2, colors.skin);
+  drawRect(13, 10 + by - armOffset, 2, 6, colors.shirt);
+  drawRect(13, 15 + by - armOffset, 2, 2, colors.skin);
 
   // Shield
   if (equipment.includes('shield')) {
@@ -518,21 +529,21 @@ function drawCharacter(
   }
 
   // Belt
-  drawRect(4, 16 + by, 8, 1, COLORS.boots);
+  drawRect(4, 16 + by, 8, 1, colors.boots);
   // Pants + Legs
-  drawRect(4, 17 + by, 3, 4, COLORS.pants);
-  drawRect(9, 17 + by, 3, 4, COLORS.pants);
+  drawRect(4, 17 + by, 3, 4, colors.pants);
+  drawRect(9, 17 + by, 3, 4, colors.pants);
 
   if (state === 'walking') {
-    drawRect(4, 21 + by, 3, 3 + legOffset, COLORS.pants);
-    drawRect(4, 23 + by + legOffset, 3, 1, COLORS.boots);
-    drawRect(9, 21 + by, 3, 3 - legOffset, COLORS.pants);
-    drawRect(9, 23 + by - legOffset, 3, 1, COLORS.boots);
+    drawRect(4, 21 + by, 3, 3 + legOffset, colors.pants);
+    drawRect(4, 23 + by + legOffset, 3, 1, colors.boots);
+    drawRect(9, 21 + by, 3, 3 - legOffset, colors.pants);
+    drawRect(9, 23 + by - legOffset, 3, 1, colors.boots);
   } else {
-    drawRect(4, 21 + by, 3, 2, COLORS.pants);
-    drawRect(4, 23 + by, 3, 1, COLORS.boots);
-    drawRect(9, 21 + by, 3, 2, COLORS.pants);
-    drawRect(9, 23 + by, 3, 1, COLORS.boots);
+    drawRect(4, 21 + by, 3, 2, colors.pants);
+    drawRect(4, 23 + by, 3, 1, colors.boots);
+    drawRect(9, 21 + by, 3, 2, colors.pants);
+    drawRect(9, 23 + by, 3, 1, colors.boots);
   }
 
   // Bag

@@ -22,6 +22,7 @@ export default function Dashboard() {
   const { user, isLoaded } = useUser();
   const [quests, setQuests] = useState<QuestData[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>([]);
+  const [characterConfig, setCharacterConfig] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -35,6 +36,7 @@ export default function Dashboard() {
         const data = await res.json();
         setQuests(data.quests || []);
         setHeatmapData(data.heatmapData || []);
+        setCharacterConfig(data.characterConfig || {});
       } catch (e) {
         setError('Failed to load data. Please refresh.');
         console.error(e);
@@ -95,6 +97,7 @@ export default function Dashboard() {
                 equipment: q.equipment || [],
               }))}
               userName={userName}
+              characterConfig={characterConfig}
             />
 
             {/* Error state */}
