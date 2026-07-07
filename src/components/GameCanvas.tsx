@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface QuestData {
   id: string;
@@ -46,10 +46,55 @@ function getSkyColors() {
   }
 }
 
+// Generate mountain data based on canvas width
+function generateMountains(w: number) {
+  return [
+    // Far mountains (smaller, lighter)
+    { peaks: Array.from({ length: 6 }, (_, i) => ({ x: i * (w / 5) - 20, height: 40 + Math.random() * 30 })), color: '#3a5a4a', shadowColor: '#2a4a3a' },
+    // Near mountains (taller, darker)
+    { peaks: Array.from({ length: 4 }, (_, i) => ({ x: i * (w / 3) + 30, height: 60 + Math.random() * 40 })), color: '#2d4a3d', shadowColor: '#1a3a2d' },
+  ];
+}
+
+// Generate tree data
+function generateTrees(w: number) {
+  const trees: { x: number; height: number; type: 'pine' | 'oak' }[] = [];
+  for (let i = 0; i < 8; i++) {
+    trees.push({
+      x: (i * (w / 7)) + Math.random() * 40 - 20,
+      height: 30 + Math.random() * 25,
+      type: Math.random() > 0.5 ? 'pine' : 'oak',
+    });
+  }
+  return trees;
+}
+
+// NPC data
+const NPC_GREETINGS = [
+  "Welcome, adventurer!",
+  "Good day, hero!",
+  "May your quests be swift!",
+  "The guild awaits you!",
+  "Stay determined!",
+  "Need a quest? Check the board!",
+  "You look stronger today!",
+];
+
 export default function GameCanvas({ quests, userName }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
   const charRef = useRef({ x: 0, y: 0, jumpProgress: 0, jumpTriggered: false });
+  const [npcGreeting, setNpcGreeting] = useState('');
+  const [showGreeting, setShowGreeting] = useState(true);
+
+  useEffect(() => {
+    // Pick a random NPC greeting on mount
+    const greeting = NPC_GREETINGS[Math.floor(Math.random() * NPC_GREETINGS.length)];
+    setNpcGreeting(greeting);
+    setShowGreeting(true);
+    const timer = setTimeout(() => setShowGreeting(false), 6000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -82,8 +127,15 @@ export default function GameCanvas({ quests, userName }: Props) {
       x: Math.random() * 1200, y: 20 + Math.random() * 60, w: 40 + Math.random() * 60, speed: 0.2 + Math.random() * 0.3
     }));
 
+    // Generate landscape
+    let mountains = generateMountains(canvas.width);
+    let trees = generateTrees(canvas.width);
+
     const char = charRef.current;
     char.x = canvas.width / 2;
+
+    // NPC position (stands on the right side)
+    const npcX = canvas.width * 0.78;
 
     let animId: number;
     function draw() {
@@ -96,7 +148,13 @@ export default function GameCanvas({ quests, userName }: Props) {
       const baseY = groundY - CHAR_H * PIXEL;
       const sky = getSkyColors();
 
-      // Sky
+      // Regenerate landscape if canvas width changed
+      if (mountains[0].peaks.length < 3) {
+        mountains = generateMountains(w);
+        trees = generateTrees(w);
+      }
+
+      // Sky gradient
       const grad = ctx.createLinearGradient(0, 0, 0, h);
       grad.addColorStop(0, sky.top);
       grad.addColorStop(0.4, sky.mid1);
@@ -120,14 +178,39 @@ export default function GameCanvas({ quests, userName }: Props) {
         c.x += c.speed;
         if (c.x > w + 100) c.x = -c.w;
         ctx.fillStyle = sky.cloud;
-        ctx.fillRect(c.x, c.y, c.w, c.w * 0.3);
+        ctx.beginPath();
+        ctx.ellipse(c.x + c.w / 2, c.y, c.w / 2, c.w * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(c.x + c.w * 0.3, c.y + 5, c.w * 0.3, c.w * 0.12, 0, 0, Math.PI * 2);
+        ctx.fill();
       });
 
-      // Ground
+      // Mountains (far)
+      drawMountains(ctx, mountains[0], groundY, w);
+      // Mountains (near)
+      drawMountains(ctx, mountains[1], groundY, w);
+
+      // Trees (behind ground)
+      drawTrees(ctx, trees, groundY);
+
+      // Ground layers
+      ctx.fillStyle = '#5a9e4a';
+      ctx.fillRect(0, groundY, w, 4);
       ctx.fillStyle = '#4a8c3f';
-      ctx.fillRect(0, groundY, w, 8);
-      ctx.fillStyle = '#5c4a2a';
+      ctx.fillRect(0, groundY + 4, w, 4);
+      ctx.fillStyle = '#6b5a3a';
       ctx.fillRect(0, groundY + 8, w, 36);
+      // Dirt texture
+      for (let dx = 0; dx < w; dx += 12) {
+        ctx.fillStyle = '#5c4a32';
+        ctx.fillRect(dx + (frame * 0) % 6, groundY + 14, 4, 4);
+        ctx.fillStyle = '#7a6b4a';
+        ctx.fillRect(dx + 6, groundY + 22, 3, 3);
+      }
+
+      // NPC character (guide)
+      drawNPC(ctx, npcX, baseY, frame);
 
       // Character movement
       if (state === 'walking') {
@@ -142,7 +225,7 @@ export default function GameCanvas({ quests, userName }: Props) {
         char.x += (center - char.x) * 0.02;
       }
 
-      // Draw character
+      // Draw player character
       drawCharacter(ctx, char.x, char.y, frame, state, equipment, questLoad);
 
       // Name tag
@@ -179,8 +262,181 @@ export default function GameCanvas({ quests, userName }: Props) {
   return (
     <section className="game-scene">
       <canvas ref={canvasRef} className="game-canvas" />
+      {showGreeting && npcGreeting && (
+        <div className="npc-speech-bubble">
+          <span className="npc-name">Guide</span>
+          <p className="npc-message">{npcGreeting}</p>
+        </div>
+      )}
     </section>
   );
+}
+
+function drawMountains(
+  ctx: CanvasRenderingContext2D,
+  layer: { peaks: { x: number; height: number }[]; color: string; shadowColor: string },
+  groundY: number,
+  canvasW: number
+) {
+  ctx.fillStyle = layer.color;
+  ctx.beginPath();
+  ctx.moveTo(0, groundY);
+  layer.peaks.forEach((peak, i) => {
+    const px = peak.x;
+    const py = groundY - peak.height;
+    if (i === 0) {
+      ctx.lineTo(px, groundY);
+    }
+    // Draw triangle mountain with slight curves
+    ctx.lineTo(px + 20, groundY - peak.height * 0.3);
+    ctx.lineTo(px + 40, py);
+    ctx.lineTo(px + 60, groundY - peak.height * 0.4);
+    ctx.lineTo(px + 80, groundY);
+  });
+  ctx.lineTo(canvasW, groundY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Snow caps on taller mountains
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  layer.peaks.forEach(peak => {
+    if (peak.height > 50) {
+      const px = peak.x + 40;
+      const py = groundY - peak.height;
+      ctx.beginPath();
+      ctx.moveTo(px - 8, py + 10);
+      ctx.lineTo(px, py);
+      ctx.lineTo(px + 8, py + 10);
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+}
+
+function drawTrees(
+  ctx: CanvasRenderingContext2D,
+  trees: { x: number; height: number; type: 'pine' | 'oak' }[],
+  groundY: number
+) {
+  trees.forEach(tree => {
+    const tx = tree.x;
+    const th = tree.height;
+
+    if (tree.type === 'pine') {
+      // Pine tree trunk
+      ctx.fillStyle = '#4a3218';
+      ctx.fillRect(tx + th * 0.15, groundY - th * 0.4, th * 0.08, th * 0.4);
+      // Pine tree layers (3 triangles)
+      ctx.fillStyle = '#2d6b2d';
+      for (let layer = 0; layer < 3; layer++) {
+        const layerY = groundY - th * 0.4 - layer * (th * 0.22);
+        const layerW = th * (0.4 - layer * 0.08);
+        ctx.beginPath();
+        ctx.moveTo(tx + th * 0.19, layerY);
+        ctx.lineTo(tx + th * 0.19 - layerW / 2, layerY + th * 0.28);
+        ctx.lineTo(tx + th * 0.19 + layerW / 2, layerY + th * 0.28);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Darker shade on one side
+      ctx.fillStyle = '#1a5a1a';
+      for (let layer = 0; layer < 3; layer++) {
+        const layerY = groundY - th * 0.4 - layer * (th * 0.22);
+        const layerW = th * (0.4 - layer * 0.08);
+        ctx.beginPath();
+        ctx.moveTo(tx + th * 0.19, layerY);
+        ctx.lineTo(tx + th * 0.19 - layerW / 2, layerY + th * 0.28);
+        ctx.lineTo(tx + th * 0.19, layerY + th * 0.28);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else {
+      // Oak tree trunk
+      ctx.fillStyle = '#5c3a1a';
+      ctx.fillRect(tx + th * 0.12, groundY - th * 0.35, th * 0.1, th * 0.35);
+      // Oak canopy (rounded)
+      ctx.fillStyle = '#3a7a3a';
+      ctx.beginPath();
+      ctx.arc(tx + th * 0.17, groundY - th * 0.5, th * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(tx + th * 0.08, groundY - th * 0.42, th * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(tx + th * 0.26, groundY - th * 0.44, th * 0.17, 0, Math.PI * 2);
+      ctx.fill();
+      // Highlight
+      ctx.fillStyle = '#4a9a4a';
+      ctx.beginPath();
+      ctx.arc(tx + th * 0.14, groundY - th * 0.55, th * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+}
+
+function drawNPC(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number) {
+  const p = PIXEL;
+  const drawRect = (col: number, row: number, w: number, h: number, color: string) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + col * p, y + row * p, w * p, h * p);
+  };
+
+  // Idle bob
+  const bob = Math.floor(frame / 30) % 2 === 0 ? 0 : -1;
+
+  // NPC hat (wizard-style)
+  drawRect(4, -2 + bob, 8, 2, '#6b3a8a');
+  drawRect(5, -4 + bob, 6, 2, '#6b3a8a');
+  drawRect(6, -5 + bob, 4, 1, '#6b3a8a');
+  // Hat brim
+  drawRect(3, 0 + bob, 10, 1, '#5a2a7a');
+
+  // Head
+  drawRect(4, 1 + bob, 8, 7, '#e8b87a');
+  // Eyes
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x + 5 * p, y + (3 + bob) * p, p, p);
+  ctx.fillRect(x + 9 * p, y + (3 + bob) * p, p, p);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(x + 6 * p, y + (3 + bob) * p, p, p);
+  ctx.fillRect(x + 10 * p, y + (3 + bob) * p, p, p);
+  // Beard
+  drawRect(4, 7 + bob, 8, 3, '#8a7a5a');
+  drawRect(5, 9 + bob, 6, 2, '#7a6a4a');
+
+  // Robe body
+  drawRect(3, 10 + bob, 10, 8, '#5a2a8a');
+  drawRect(4, 10 + bob, 8, 8, '#6b3a9a');
+  // Belt
+  drawRect(4, 15 + bob, 8, 1, '#ffd700');
+  // Arms (holding staff)
+  drawRect(1, 10 + bob, 2, 7, '#6b3a9a');
+  drawRect(13, 10 + bob, 2, 7, '#6b3a9a');
+  // Hands
+  drawRect(1, 16 + bob, 2, 2, '#e8b87a');
+  drawRect(13, 16 + bob, 2, 2, '#e8b87a');
+
+  // Legs/feet
+  drawRect(5, 18 + bob, 3, 4, '#3a1a5a');
+  drawRect(8, 18 + bob, 3, 4, '#3a1a5a');
+  drawRect(5, 22 + bob, 3, 2, '#4a3218');
+  drawRect(8, 22 + bob, 3, 2, '#4a3218');
+
+  // Staff
+  drawRect(-1, -4 + bob, 1, 28, '#8b6914');
+  drawRect(-2, -5 + bob, 3, 1, '#ffd700');
+  // Staff orb
+  const orbGlow = Math.sin(frame * 0.08) * 0.3 + 0.7;
+  ctx.fillStyle = `rgba(100, 200, 255, ${orbGlow})`;
+  ctx.beginPath();
+  ctx.arc(x + (-0.5) * p, y + (-6 + bob) * p, p * 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // NPC label
+  ctx.font = '7px "Press Start 2P"';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#b8a0ff';
+  ctx.fillText('Guide', x + 8 * p, y + (-8 + bob) * p);
 }
 
 function drawCharacter(
@@ -203,7 +459,6 @@ function drawCharacter(
   }
 
   if (state === 'sleeping') {
-    // Horizontal character
     drawRect(0, 18, 16, 3, COLORS.shirt);
     drawRect(0, 15, 6, 5, COLORS.skin);
     drawRect(0, 14, 6, 2, COLORS.hair);
@@ -211,13 +466,11 @@ function drawCharacter(
     ctx.fillRect(x + 2 * p, y + 17 * p, p, p);
     drawRect(10, 18, 6, 3, COLORS.pants);
     drawRect(14, 18, 2, 3, COLORS.boots);
-    // ZZZ
     const zzz = Math.floor(frame / 20) % 3;
     ctx.fillStyle = 'rgba(150,150,255,0.7)';
     ctx.font = `${8 + zzz * 2}px "Press Start 2P"`;
     ctx.textAlign = 'center';
     ctx.fillText('z', x + 8 * p, y + (10 - zzz * 3) * p);
-    // Bag next to sleeping
     if (questLoad > 0) drawBag(ctx, x - 4 * p, y + 14 * p, questLoad, frame, true);
     return;
   }
